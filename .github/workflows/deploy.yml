@@ -38,17 +38,36 @@ jobs:
       - name: Build frontend
         run: npm run build
 
+      - name: Validate Secrets
+        run: |
+          echo "Validating required secrets..."
+          if [ -z "$SSH_USER" ]; then
+            echo "Error: SSH_USER secret is not set"
+            exit 1
+          fi
+          if [ -z "$SSH_HOSTNAME" ]; then
+            echo "Error: SSH_HOSTNAME secret is not set"
+            exit 1
+          fi
+          if [ -z "$SSH_KEY" ]; then
+            echo "Error: SSH_KEY secret is not set"
+            exit 1
+          fi
+          if [ -z "$DEPLOY_PATH" ]; then
+            echo "Error: DEPLOY_PATH secret is not set"
+            exit 1
+          fi
+          echo "SSH_USER: $SSH_USER"
+          echo "SSH_HOSTNAME: $SSH_HOSTNAME"
+          echo "SSH_PORT: ${SSH_PORT:-22}"
+          echo "DEPLOY_PATH: $DEPLOY_PATH"
+          echo "All required secrets are set"
+
       - name: Prepare SSH
         run: |
           set -e
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
-          
-          # Check if SSH_KEY is set
-          if [ -z "$SSH_KEY" ]; then
-            echo "Error: SSH_KEY secret is not set"
-            exit 1
-          fi
           
           # Write SSH key preserving exact format
           echo "$SSH_KEY" | tr -d '\r' > ~/.ssh/id_rsa
@@ -65,22 +84,28 @@ jobs:
             exit 1
           fi
           
-          # Add host to known_hosts
-          ssh-keyscan -p ${SSH_PORT} -H ${SSH_HOSTNAME} >> ~/.ssh/known_hosts 2>/dev/null || true
+          # Add host to known_hosts (using IP address directly)
+          echo "Adding ${SSH_HOSTNAME} to known_hosts..."
+          ssh-keyscan -p ${SSH_PORT:-22} -H ${SSH_HOSTNAME} >> ~/.ssh/known_hosts 2>&1 || {
+            echo "Warning: ssh-keyscan failed, but continuing..."
+          }
           chmod 644 ~/.ssh/known_hosts
           
           echo "SSH key prepared successfully"
 
       - name: Rsync release to server
         run: |
+          set -e
           RELEASE=${GITHUB_SHA}
+          echo "Deploying release ${RELEASE} to ${SSH_USER}@${SSH_HOSTNAME}:${DEPLOY_PATH}/releases/${RELEASE}/"
           rsync -az --delete \
             --exclude ".git" --exclude "node_modules" --exclude ".github" \
             --exclude "vendor" --exclude ".env" --exclude "storage" \
-            -e "ssh -o StrictHostKeyChecking=no -p ${SSH_PORT}" \
+            -e "ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=~/.ssh/known_hosts -p ${SSH_PORT:-22}" \
             ./ ${SSH_USER}@${SSH_HOSTNAME}:${DEPLOY_PATH}/releases/${RELEASE}/
 
       - name: Run remote deploy script
         run: |
+          set -e
           RELEASE=${GITHUB_SHA}
-          ssh -o StrictHostKeyChecking=no -p ${SSH_PORT} ${SSH_USER}@${SSH_HOSTNAME} "bash ${DEPLOY_PATH}/releases/${RELEASE}/scripts/deploy_remote.sh ${DEPLOY_PATH} ${RELEASE}"
+          ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=~/.ssh/known_hosts -p ${SSH_PORT:-22} ${SSH_USER}@${SSH_HOSTNAME} "bash ${DEPLOY_PATH}/releases/${RELEASE}/scripts/deploy_remote.sh ${DEPLOY_PATH} ${RELEASE}"
