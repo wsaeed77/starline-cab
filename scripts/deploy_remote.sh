@@ -32,13 +32,33 @@ if [ -f ${DEPLOY_PATH}/shared/.env ]; then
   ln -sf ${DEPLOY_PATH}/shared/.env ${RELEASE_DIR}/.env
 fi
 
+# Install Composer dependencies (vendor is excluded from rsync)
+echo "Installing Composer dependencies..."
+if [ -f ${RELEASE_DIR}/composer.json ]; then
+  # Try to find composer in common locations
+  COMPOSER_CMD="composer"
+  if ! command -v composer &> /dev/null; then
+    if [ -f /usr/local/bin/composer ]; then
+      COMPOSER_CMD="/usr/local/bin/composer"
+    elif [ -f /usr/bin/composer ]; then
+      COMPOSER_CMD="/usr/bin/composer"
+    else
+      echo "Error: Composer not found. Please install Composer on the server."
+      exit 1
+    fi
+  fi
+  ${COMPOSER_CMD} install --no-dev --prefer-dist --no-interaction --optimize-autoloader --no-scripts
+else
+  echo "Warning: composer.json not found, skipping composer install"
+fi
+
 # Create bootstrap/cache if it doesn't exist
 mkdir -p ${RELEASE_DIR}/bootstrap/cache
 
 # Set permissions for bootstrap/cache (this is in the release, so ubuntu owns it)
 chmod -R 775 ${RELEASE_DIR}/bootstrap/cache
 
-# Optimize Laravel (composer already installed on CI)
+# Optimize Laravel
 php artisan config:clear || true
 php artisan cache:clear || true
 php artisan route:clear || true
