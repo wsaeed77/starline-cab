@@ -1,0 +1,59 @@
+name: Build & Deploy to EC2
+
+on:
+  push:
+    branches: [ main, master ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      SSH_USER: ${{ secrets.SSH_USER }}
+      SSH_HOSTNAME: ${{ secrets.SSH_HOSTNAME }}
+      SSH_PORT: ${{ secrets.SSH_PORT || '22' }}
+      SSH_KEY: ${{ secrets.SSH_KEY }}
+      DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          tools: composer
+          extensions: mbstring, xml, ctype, iconv, intl, pdo, pdo_mysql, dom, filter, gd, json, libxml, mbstring, mysqlnd, openssl, pcre, pdo_sqlite, phar, posix, readline, reflection, session, simplexml, spl, sqlite3, standard, tokenizer, xmlreader, xmlwriter, zip, zlib
+
+      - name: Install PHP dependencies
+        run: composer install --no-dev --prefer-dist --no-interaction --optimize-autoloader
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install Node dependencies
+        run: npm ci
+
+      - name: Build frontend
+        run: npm run build
+
+      - name: Prepare SSH
+        run: |
+          mkdir -p ~/.ssh
+          printf "%s" "$SSH_KEY" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -p ${SSH_PORT} -H ${SSH_HOSTNAME} >> ~/.ssh/known_hosts
+
+      - name: Rsync release to server
+        run: |
+          RELEASE=${GITHUB_SHA}
+          rsync -az --delete \
+            --exclude ".git" --exclude "node_modules" --exclude ".github" \
+            --exclude "vendor" --exclude ".env" --exclude "storage" \
+            -e "ssh -p ${SSH_PORT}" ./ ${SSH_USER}@${SSH_HOSTNAME}:${DEPLOY_PATH}/releases/${RELEASE}/
+
+      - name: Run remote deploy script
+        run: |
+          RELEASE=${GITHUB_SHA}
+          ssh -p ${SSH_PORT} ${SSH_USER}@${SSH_HOSTNAME} "bash ${DEPLOY_PATH}/releases/${RELEASE}/scripts/deploy_remote.sh ${DEPLOY_PATH} ${RELEASE}"
