@@ -40,24 +40,36 @@ jobs:
 
       - name: Prepare SSH
         run: |
+          set -e
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
+          
+          # Check if SSH_KEY is set
+          if [ -z "$SSH_KEY" ]; then
+            echo "Error: SSH_KEY secret is not set"
+            exit 1
+          fi
+          
           # Write SSH key preserving exact format
           echo "$SSH_KEY" | tr -d '\r' > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
-          # Verify key file
+          
+          # Verify key file exists and has content
+          if [ ! -f ~/.ssh/id_rsa ]; then
+            echo "Error: SSH key file was not created"
+            exit 1
+          fi
+          
           if [ ! -s ~/.ssh/id_rsa ]; then
             echo "Error: SSH key file is empty"
             exit 1
           fi
-          # Check key format
-          if ! grep -q "BEGIN.*PRIVATE KEY" ~/.ssh/id_rsa; then
-            echo "Error: SSH key format appears invalid"
-            exit 1
-          fi
+          
           # Add host to known_hosts
-          ssh-keyscan -p ${SSH_PORT} -H ${SSH_HOSTNAME} >> ~/.ssh/known_hosts 2>/dev/null
+          ssh-keyscan -p ${SSH_PORT} -H ${SSH_HOSTNAME} >> ~/.ssh/known_hosts 2>/dev/null || true
           chmod 644 ~/.ssh/known_hosts
+          
+          echo "SSH key prepared successfully"
 
       - name: Rsync release to server
         run: |
