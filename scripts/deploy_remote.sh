@@ -52,11 +52,11 @@ else
   echo "Warning: composer.json not found, skipping composer install"
 fi
 
-# Create bootstrap/cache if it doesn't exist
-mkdir -p ${RELEASE_DIR}/bootstrap/cache
-
-# Set permissions for bootstrap/cache (this is in the release, so ubuntu owns it)
-chmod -R 775 ${RELEASE_DIR}/bootstrap/cache
+# Create bootstrap/cache if it doesn't exist and set ownership to www-data
+echo "Setting up bootstrap/cache directory..."
+sudo mkdir -p ${RELEASE_DIR}/bootstrap/cache
+sudo chown -R www-data:www-data ${RELEASE_DIR}/bootstrap/cache
+sudo chmod -R 775 ${RELEASE_DIR}/bootstrap/cache
 
 # Optimize Laravel (run as www-data to ensure proper permissions)
 echo "Clearing Laravel caches..."
@@ -76,7 +76,7 @@ sudo -u www-data php artisan view:cache
 # Point current to new release
 ln -sfn ${RELEASE_DIR} ${CURRENT}
 
-# Fix permissions for bootstrap/cache in release (let www-data write to it)
+# Ensure bootstrap/cache permissions are still correct after symlink
 sudo chown -R www-data:www-data ${RELEASE_DIR}/bootstrap/cache || true
 sudo chmod -R 775 ${RELEASE_DIR}/bootstrap/cache || true
 
