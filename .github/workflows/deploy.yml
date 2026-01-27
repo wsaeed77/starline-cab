@@ -41,9 +41,23 @@ jobs:
       - name: Prepare SSH
         run: |
           mkdir -p ~/.ssh
-          printf "%s" "$SSH_KEY" > ~/.ssh/id_rsa
+          chmod 700 ~/.ssh
+          # Write SSH key preserving exact format
+          echo "$SSH_KEY" | tr -d '\r' > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
-          ssh-keyscan -p ${SSH_PORT} -H ${SSH_HOSTNAME} >> ~/.ssh/known_hosts
+          # Verify key file
+          if [ ! -s ~/.ssh/id_rsa ]; then
+            echo "Error: SSH key file is empty"
+            exit 1
+          fi
+          # Check key format
+          if ! grep -q "BEGIN.*PRIVATE KEY" ~/.ssh/id_rsa; then
+            echo "Error: SSH key format appears invalid"
+            exit 1
+          fi
+          # Add host to known_hosts
+          ssh-keyscan -p ${SSH_PORT} -H ${SSH_HOSTNAME} >> ~/.ssh/known_hosts 2>/dev/null
+          chmod 644 ~/.ssh/known_hosts
 
       - name: Rsync release to server
         run: |
@@ -51,9 +65,10 @@ jobs:
           rsync -az --delete \
             --exclude ".git" --exclude "node_modules" --exclude ".github" \
             --exclude "vendor" --exclude ".env" --exclude "storage" \
-            -e "ssh -p ${SSH_PORT}" ./ ${SSH_USER}@${SSH_HOSTNAME}:${DEPLOY_PATH}/releases/${RELEASE}/
+            -e "ssh -o StrictHostKeyChecking=no -p ${SSH_PORT}" \
+            ./ ${SSH_USER}@${SSH_HOSTNAME}:${DEPLOY_PATH}/releases/${RELEASE}/
 
       - name: Run remote deploy script
         run: |
           RELEASE=${GITHUB_SHA}
-          ssh -p ${SSH_PORT} ${SSH_USER}@${SSH_HOSTNAME} "bash ${DEPLOY_PATH}/releases/${RELEASE}/scripts/deploy_remote.sh ${DEPLOY_PATH} ${RELEASE}"
+          ssh -o StrictHostKeyChecking=no -p ${SSH_PORT} ${SSH_USER}@${SSH_HOSTNAME} "bash ${DEPLOY_PATH}/releases/${RELEASE}/scripts/deploy_remote.sh ${DEPLOY_PATH} ${RELEASE}"
