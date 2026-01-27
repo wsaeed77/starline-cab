@@ -69,6 +69,15 @@ jobs:
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
           
+          # Verify SSH_HOSTNAME is set and show first/last characters (for debugging)
+          if [ -z "$SSH_HOSTNAME" ]; then
+            echo "Error: SSH_HOSTNAME is empty"
+            exit 1
+          fi
+          echo "SSH_HOSTNAME length: ${#SSH_HOSTNAME}"
+          echo "SSH_HOSTNAME first char: ${SSH_HOSTNAME:0:1}"
+          echo "SSH_HOSTNAME last char: ${SSH_HOSTNAME: -1}"
+          
           # Write SSH key preserving exact format
           echo "$SSH_KEY" | tr -d '\r' > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
@@ -85,7 +94,7 @@ jobs:
           fi
           
           # Add host to known_hosts (using IP address directly)
-          echo "Adding ${SSH_HOSTNAME} to known_hosts..."
+          echo "Adding ${SSH_HOSTNAME} to known_hosts on port ${SSH_PORT:-22}..."
           ssh-keyscan -p ${SSH_PORT:-22} -H ${SSH_HOSTNAME} >> ~/.ssh/known_hosts 2>&1 || {
             echo "Warning: ssh-keyscan failed, but continuing..."
           }
@@ -93,15 +102,27 @@ jobs:
           
           echo "SSH key prepared successfully"
 
+      - name: Test SSH Connection
+        run: |
+          set -e
+          echo "Testing SSH connection to ${SSH_USER}@${SSH_HOSTNAME}..."
+          ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 -p ${SSH_PORT:-22} ${SSH_USER}@${SSH_HOSTNAME} "echo 'SSH connection successful'" || {
+            echo "Error: SSH connection test failed"
+            echo "Attempting to resolve hostname..."
+            nslookup ${SSH_HOSTNAME} || echo "nslookup failed"
+            exit 1
+          }
+
       - name: Rsync release to server
         run: |
           set -e
           RELEASE=${GITHUB_SHA}
-          echo "Deploying release ${RELEASE} to ${SSH_USER}@${SSH_HOSTNAME}:${DEPLOY_PATH}/releases/${RELEASE}/"
-          rsync -az --delete \
+          echo "Deploying release ${RELEASE}"
+          echo "Target: ${SSH_USER}@${SSH_HOSTNAME}:${DEPLOY_PATH}/releases/${RELEASE}/"
+          rsync -azv --delete \
             --exclude ".git" --exclude "node_modules" --exclude ".github" \
             --exclude "vendor" --exclude ".env" --exclude "storage" \
-            -e "ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=~/.ssh/known_hosts -p ${SSH_PORT:-22}" \
+            -e "ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=~/.ssh/known_hosts -o ConnectTimeout=10 -p ${SSH_PORT:-22}" \
             ./ ${SSH_USER}@${SSH_HOSTNAME}:${DEPLOY_PATH}/releases/${RELEASE}/
 
       - name: Run remote deploy script
