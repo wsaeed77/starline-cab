@@ -7,12 +7,13 @@ RELEASE=${2:?"RELEASE SHA required"}
 CURRENT=${DEPLOY_PATH}/current
 RELEASE_DIR=${DEPLOY_PATH}/releases/${RELEASE}
 
-# Ensure shared storage directory exists with proper structure
-mkdir -p ${DEPLOY_PATH}/shared/storage/app/public
-mkdir -p ${DEPLOY_PATH}/shared/storage/framework/cache/data
-mkdir -p ${DEPLOY_PATH}/shared/storage/framework/sessions
-mkdir -p ${DEPLOY_PATH}/shared/storage/framework/views
-mkdir -p ${DEPLOY_PATH}/shared/storage/logs
+# Ensure shared storage directory exists with proper structure (use sudo to create)
+echo "Creating shared storage directories..."
+sudo mkdir -p ${DEPLOY_PATH}/shared/storage/app/public
+sudo mkdir -p ${DEPLOY_PATH}/shared/storage/framework/cache/data
+sudo mkdir -p ${DEPLOY_PATH}/shared/storage/framework/sessions
+sudo mkdir -p ${DEPLOY_PATH}/shared/storage/framework/views
+sudo mkdir -p ${DEPLOY_PATH}/shared/storage/logs
 
 # Always ensure shared storage has correct permissions (www-data needs to write)
 echo "Setting permissions on shared storage..."
